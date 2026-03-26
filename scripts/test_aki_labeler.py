@@ -22,14 +22,11 @@ def test_creatinine_verification():
         output_dir=config.PROCESSED_DATA_DIR
     )
     
-    try:
-        verified = labeler.verify_creatinine_itemids()
-        print(f"\n✓ All creatinine itemids verified successfully!")
-        print(f"  Verified itemids: {verified}")
-        return True
-    except Exception as e:
-        print(f"\n✗ Verification failed: {e}")
-        return False
+    verified = labeler.verify_creatinine_itemids()
+    print(f"\n✓ All creatinine itemids verified successfully!")
+    print(f"  Verified itemids: {verified}")
+    assert verified is not None and len(verified) > 0, "No creatinine itemids verified"
+    assert 50912 in verified, "Primary creatinine itemid 50912 not verified"
 
 if __name__ == "__main__":
     success = test_creatinine_verification()

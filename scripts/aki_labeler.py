@@ -174,8 +174,12 @@ class AKI_Labeler:
         # Parse charttime as datetime
         self.labevents['charttime'] = pd.to_datetime(self.labevents['charttime'])
         
-        # Use valuenum for numeric creatinine values
+        # Use valuenum for numeric creatinine values; filter out zero/implausible values
         self.labevents = self.labevents[self.labevents['valuenum'].notna()].copy()
+        zero_count = (self.labevents['valuenum'] <= 0).sum()
+        if zero_count > 0:
+            self.logger.warning(f"  Filtering out {zero_count} creatinine measurements with value <= 0 (data entry errors)")
+        self.labevents = self.labevents[self.labevents['valuenum'] > 0].copy()
         
         self.logger.info(f"  Loaded {len(self.labevents):,} creatinine measurements from {total_rows:,} total lab events")
         self.logger.info(f"  Creatinine coverage: {100 * len(self.labevents) / total_rows:.3f}%")
