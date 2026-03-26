@@ -48,9 +48,6 @@ Thumbs.db
 *.swp
 *.swo
 
-# Kiro
-.kiro/
-
 # Misc
 *.log
 *.tmp
