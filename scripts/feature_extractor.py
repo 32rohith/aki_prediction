@@ -277,3 +277,21 @@ class Feature_Extractor:
         self.logger.info("=" * 80)
         self.logger.info("Feature Extraction Pipeline Complete")
         self.logger.info("=" * 80)
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Extract structured features")
+    parser.add_argument('--raw-data-dir', type=str, default=config.RAW_DATA_DIR)
+    parser.add_argument('--processed-data-dir', type=str, default=config.PROCESSED_DATA_DIR)
+    parser.add_argument('--logs-dir', type=str, default=config.LOGS_DIR)
+    args = parser.parse_args()
+    
+    os.makedirs(args.logs_dir, exist_ok=True)
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout,
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    extractor = Feature_Extractor(args.raw_data_dir, args.processed_data_dir, args.logs_dir)
+    extractor.run()
+
+if __name__ == '__main__':
+    main()

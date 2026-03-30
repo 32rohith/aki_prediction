@@ -1,20 +1,10 @@
-# AKI Prediction Pipeline Dependencies
-# Research-grade ML pipeline for MIMIC-IV data
-
-# Core data processing
-pandas==2.0.3
-numpy==1.24.3
-
-# Machine learning
-scikit-learn==1.3.0
-
-# Visualization
-matplotlib==3.7.2
-seaborn==0.12.2
-
-# Deep learning and transformers
-torch==2.0.1
-transformers==4.30.2
-
-# Utilities
-tqdm==4.65.0
+# AKI Prediction Pipeline - Requirements (Pinned Versions)
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+transformers>=4.30.0
+torch>=2.0.0
+joblib>=1.3.0
+tabulate>=0.9.0

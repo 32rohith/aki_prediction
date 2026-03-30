@@ -93,23 +93,45 @@ class Lab_Aggregator:
         if self._labevents is not None:
             return self._labevents
 
+        labeled_stays = self._load_labeled_stays()
+        valid_hadm_ids = set(labeled_stays['hadm_id'].dropna().unique())
+        
         path = os.path.join(self.raw_data_dir, 'labevents.csv')
-        self.logger.info("Loading labevents.csv in chunks ...")
+        self.logger.info("Loading labevents.csv in large chunks ...")
 
         chunks = []
         total_rows = 0
-        for chunk in pd.read_csv(path, chunksize=config.CHUNK_SIZE):
+        # Use 1,000,000 chunksize instead of config.CHUNK_SIZE for dramatic speedup
+        for chunk in pd.read_csv(path, chunksize=1_000_000):
             total_rows += len(chunk)
-            # Keep only rows with numeric values
+            # Pre-filter by admission ID
+            if 'hadm_id' in chunk.columns:
+                chunk = chunk[chunk['hadm_id'].isin(valid_hadm_ids)]
             chunk = chunk[chunk['valuenum'].notna()].copy()
-            chunks.append(chunk)
-            if total_rows % (config.CHUNK_SIZE * 100) == 0:
+            
+            if len(chunk) > 0:
+                chunks.append(chunk)
+                
+            if total_rows % 5_000_000 == 0:
                 self.logger.info(f"  Processed {total_rows:,} rows ...")
 
-        self._labevents = pd.concat(chunks, ignore_index=True)
+        self.logger.info("Concatenating chunks...")
+        self._labevents = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
         self._labevents['charttime'] = pd.to_datetime(self._labevents['charttime'])
+        
+        # Merge with labeled_stays to get stay_id and intime
+        self.logger.info("Merging with labeled stays to assign stay_id...")
+        stay_mapping = labeled_stays[['hadm_id', 'stay_id', 'intime']]
+        self._labevents = self._labevents.merge(stay_mapping, on='hadm_id', how='inner')
+        
+        # Temporal filtering to reduce memory footprint
+        self.logger.info("Applying strict temporal filtering (< 24h)...")
+        cutoff = self._labevents['intime'] + pd.Timedelta(hours=config.TEMPORAL_CUTOFF_HOURS)
+        self._labevents = self._labevents[self._labevents['charttime'] < cutoff]
+        self._labevents.drop(columns=['intime'], inplace=True)
+        
         self.logger.info(
-            f"  Loaded {len(self._labevents):,} lab events with numeric values "
+            f"  Loaded {len(self._labevents):,} relevant lab events "
             f"(from {total_rows:,} total rows)"
         )
         return self._labevents
@@ -318,52 +340,83 @@ class Lab_Aggregator:
 
     def aggregate_all_stays(self, stays_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Compute lab aggregations for all ICU stays.
-
+        Compute lab aggregations for all ICU stays using vectorized operations.
+        
         Args:
             stays_df: DataFrame with stay_id and intime columns
-
+            
         Returns:
             DataFrame with stay_id + all lab feature columns
         """
         if self._selected_labs is None:
             raise RuntimeError("Call select_labs() before aggregate_all_stays()")
-
-        self.logger.info(f"Aggregating labs for {len(stays_df):,} stays ...")
-
+            
+        self.logger.info(f"Aggregating labs for {len(stays_df):,} stays using Vectorized GroupBy ...")
+        
         labevents = self._load_labevents()
         selected_itemids = [lab['itemid'] for lab in self._selected_labs]
+        
+        stay_ids = list(stays_df['stay_id'].unique())
+        
+        relevant_labs = labevents[labevents['itemid'].isin(selected_itemids)].copy()
+        
+        self.logger.info(f"  Relevant lab events (selected itemids, cohort stays): {len(relevant_labs):,}")
+        
+        if len(relevant_labs) == 0:
+            self.logger.warning("No relevant lab events found!")
+            return pd.DataFrame({'stay_id': stay_ids})
+            
+        # Ensure sorting by charttime for 'first' and 'last'
+        relevant_labs = relevant_labs.sort_values(['stay_id', 'itemid', 'charttime'])
+        
+        # Compute aggregations vectorized
+        agg_funcs = ['mean', 'min', 'max', 'std', 'first', 'last']
+        grouped = relevant_labs.groupby(['stay_id', 'itemid'])['valuenum'].agg(agg_funcs)
+        
+        # Unstack to flat columns
+        flat_df = grouped.unstack(level='itemid')
+        
+        # Reformat column names mapping
+        lab_mapping = {lab['itemid']: lab['label'].lower().replace(' ', '_').replace(',', '').replace('/', '_') 
+                       for lab in self._selected_labs}
+        
+        # Create mapping from (agg, itemid) to `lab_{itemid}_{label}_{agg}`
+        new_cols = []
+        for agg_func, itemid in flat_df.columns:
+            prefix = f"lab_{itemid}_{lab_mapping.get(itemid, str(itemid))}"
+            new_cols.append(f"{prefix}_{agg_func}")
+            
+        flat_df.columns = new_cols
+        flat_df = flat_df.reset_index()
+        
+        # Merge back with all stay_ids to ensure everyone is present (even if no labs)
+        result_df = pd.DataFrame({'stay_id': stay_ids})
+        result_df = result_df.merge(flat_df, on='stay_id', how='left')
+        
+        # Fill missing indicators and fillna for std (0.0 if only 1 measurement)
+        for lab in self._selected_labs:
+            itemid = lab['itemid']
+            prefix = f"lab_{itemid}_{lab_mapping[itemid]}"
+            
+            mean_col = f"{prefix}_mean"
+            missing_col = f"{prefix}_missing"
+            std_col = f"{prefix}_std"
+            
+            # If the aggregate columns were created
+            if mean_col in result_df.columns:
+                is_missing = result_df[mean_col].isna().astype(int)
+                result_df[missing_col] = is_missing
+                
+                # Fill NaN std with 0.0 if not missing (means exactly 1 measurement)
+                mask = (is_missing == 0) & (result_df[std_col].isna())
+                result_df.loc[mask, std_col] = 0.0
+                
+                # We don't fill NaNs for mean/min/max/etc. here; Data splitter does that.
+            else:
+                # Lab was never measured for ANY stay
+                for f in agg_funcs:
+                    result_df[f"{prefix}_{f}"] = np.nan
+                result_df[missing_col] = 1
 
-        # Pre-filter labevents to selected itemids and cohort stays
-        stay_ids = set(stays_df['stay_id'].unique())
-        relevant_labs = labevents[
-            labevents['itemid'].isin(selected_itemids) &
-            labevents['stay_id'].isin(stay_ids)
-        ].copy()
-
-        self.logger.info(
-            f"  Relevant lab events (selected itemids, cohort stays): {len(relevant_labs):,}"
-        )
-
-        rows = []
-        for i, (_, stay_row) in enumerate(stays_df.iterrows()):
-            stay_id = stay_row['stay_id']
-            intime = stay_row['intime']
-
-            stay_labs = relevant_labs[relevant_labs['stay_id'] == stay_id]
-            features = self.aggregate_labs_for_stay(stay_id, intime, stay_labs)
-            features['stay_id'] = stay_id
-            rows.append(features)
-
-            if (i + 1) % 1000 == 0:
-                self.logger.info(f"  Aggregated {i + 1:,}/{len(stays_df):,} stays ...")
-
-        result_df = pd.DataFrame(rows)
-        # Ensure stay_id is the first column
-        cols = ['stay_id'] + [c for c in result_df.columns if c != 'stay_id']
-        result_df = result_df[cols]
-
-        self.logger.info(
-            f"  Lab aggregation complete. Shape: {result_df.shape}"
-        )
+        self.logger.info(f"  Lab aggregation complete. Shape: {result_df.shape}")
         return result_df
