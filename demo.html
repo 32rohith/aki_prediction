@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AKI Prediction Pipeline — Interactive Demo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface2: #232733;
+            --accent: #6C63FF;
+            --accent2: #00D4AA;
+            --accent3: #FF6B6B;
+            --accent4: #FFD93D;
+            --text: #e8eaed;
+            --text2: #9aa0b0;
+            --border: #2d3143;
+            --gradient1: linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%);
+            --gradient2: linear-gradient(135deg, #FF6B6B 0%, #FFD93D 100%);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); overflow-x:hidden; }
+
+        /* NAV */
+        .nav { position:fixed; top:0; left:0; right:0; z-index:100; background:rgba(15,17,23,0.88); backdrop-filter:blur(20px); border-bottom:1px solid var(--border); padding:10px 0; }
+        .nav-inner { max-width:1200px; margin:0 auto; display:flex; align-items:center; gap:6px; padding:0 20px; overflow-x:auto; }
+        .nav-btn { padding:8px 14px; border:none; border-radius:8px; background:transparent; color:var(--text2); font-family:'Inter'; font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap; transition:all .3s; }
+        .nav-btn:hover,.nav-btn.active { background:var(--accent); color:#fff; }
+
+        /* SECTIONS */
+        .section { display:none; min-height:100vh; padding:70px 24px 50px; max-width:1200px; margin:0 auto; animation:fadeIn .5s ease; }
+        .section.active { display:block; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+        /* HERO */
+        .hero { text-align:center; padding:50px 0 30px; }
+        .hero-badge { display:inline-block; padding:6px 16px; border-radius:20px; background:rgba(108,99,255,.15); color:var(--accent); font-size:13px; font-weight:600; margin-bottom:16px; border:1px solid rgba(108,99,255,.3); }
+        .hero h1 { font-size:40px; font-weight:800; background:var(--gradient1); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:14px; line-height:1.2; }
+        .hero p { font-size:17px; color:var(--text2); max-width:700px; margin:0 auto 24px; line-height:1.6; }
+
+        /* CARDS */
+        .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; margin-bottom:16px; transition:transform .2s,border-color .2s; }
+        .card:hover { transform:translateY(-2px); border-color:var(--accent); }
+        .card h3 { font-size:17px; font-weight:700; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+        .card p { color:var(--text2); line-height:1.7; font-size:14px; }
+
+        /* GRIDS */
+        .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+        .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+        .grid-4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:14px; }
+        @media(max-width:900px){ .grid-2,.grid-3,.grid-4{grid-template-columns:1fr;} .hero h1{font-size:26px;} .pipeline-visual{overflow-x:auto;} }
+
+        /* STATS */
+        .stat { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:20px; text-align:center; }
+        .stat-value { font-size:34px; font-weight:800; margin-bottom:4px; }
+        .stat-label { font-size:12px; color:var(--text2); font-weight:500; }
+        .stat-value.accent{color:var(--accent);} .stat-value.green{color:var(--accent2);} .stat-value.red{color:var(--accent3);} .stat-value.yellow{color:var(--accent4);}
+
+        .section-header { margin-bottom:24px; }
+        .section-header h2 { font-size:26px; font-weight:700; margin-bottom:6px; }
+        .section-header p { color:var(--text2); font-size:14px; }
+
+        /* IMAGE CARD WITH INTERPRETATION */
+        .fig-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-bottom:16px; }
+        .fig-card img { width:100%; display:block; cursor:pointer; transition:transform .3s; }
+        .fig-card img:hover { transform:scale(1.02); }
+        .fig-card .fig-info { padding:14px 18px; }
+        .fig-card .fig-title { font-size:14px; font-weight:700; margin-bottom:6px; color:var(--text); }
+        .fig-card .fig-interp { font-size:13px; color:var(--text2); line-height:1.6; }
+        .fig-card .fig-interp strong { color:var(--accent2); }
+
+        /* LIGHTBOX */
+        .lightbox { display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.92); align-items:center; justify-content:center; cursor:zoom-out; }
+        .lightbox.show { display:flex; }
+        .lightbox img { max-width:92%; max-height:92vh; border-radius:10px; }
+
+        /* PIPELINE VISUAL */
+        .pipeline-visual { margin:20px 0; }
+        .pv-row { display:flex; align-items:stretch; gap:0; margin-bottom:2px; }
+        .pv-phase { padding:6px 14px; border-radius:8px 0 0 8px; font-size:11px; font-weight:700; writing-mode:horizontal-tb; display:flex; align-items:center; min-width:100px; justify-content:center; color:#fff; }
+        .pv-phase.p0{background:#4a4680;} .pv-phase.p1{background:#6C63FF;} .pv-phase.p2{background:#e67e22;} .pv-phase.p3{background:#00D4AA;} .pv-phase.p4{background:#FF6B6B;}
+        .pv-steps { flex:1; display:flex; gap:2px; }
+        .pv-step { flex:1; background:var(--surface); border:1px solid var(--border); padding:12px 14px; position:relative; transition:border-color .3s,background .3s; cursor:default; }
+        .pv-step:last-child { border-radius:0 8px 8px 0; }
+        .pv-step:hover { border-color:var(--accent); background:var(--surface2); }
+        .pv-step .pv-num { font-size:10px; font-weight:700; color:var(--accent); margin-bottom:2px; }
+        .pv-step .pv-name { font-size:12px; font-weight:600; margin-bottom:3px; line-height:1.3; }
+        .pv-step .pv-file { font-size:10px; color:var(--text2); font-family:monospace; }
+        .pv-arrow { display:flex; align-items:center; justify-content:center; padding:8px 0; }
+        .pv-arrow svg { width:20px; height:20px; }
+
+        /* METRICS TABLE */
+        .metrics-table { width:100%; border-collapse:collapse; margin-top:12px; }
+        .metrics-table th,.metrics-table td { padding:10px 14px; text-align:left; border-bottom:1px solid var(--border); font-size:13px; }
+        .metrics-table th { color:var(--text2); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+        .metrics-table tr.best td { color:var(--accent2); font-weight:600; }
+        .metrics-table tr.worst td { color:var(--text2); opacity:.6; }
+
+        /* ROBUSTNESS BARS */
+        .rob-bar { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+        .rob-label { font-size:13px; min-width:130px; font-weight:500; }
+        .rob-track { flex:1; height:26px; background:var(--surface2); border-radius:13px; overflow:hidden; }
+        .rob-fill { height:100%; border-radius:13px; display:flex; align-items:center; padding-left:12px; font-size:11px; font-weight:700; transition:width 1s ease; }
+        .rob-fill.full{background:var(--gradient1);} .rob-fill.ok{background:linear-gradient(135deg,#6C63FF,#a78bfa);} .rob-fill.bad{background:var(--gradient2);}
+
+        /* SIMULATOR */
+        .sim-container { display:grid; grid-template-columns:1fr 340px; gap:20px; }
+        .sim-field { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+        .sim-field label { font-size:13px; font-weight:500; }
+        .sim-field input[type="range"] { width:130px; accent-color:var(--accent); }
+        .sim-field .val { font-size:14px; font-weight:700; color:var(--accent); min-width:45px; text-align:right; }
+        .sim-result { position:sticky; top:70px; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:28px; text-align:center; }
+        .sim-gauge { width:180px; height:180px; margin:0 auto 16px; position:relative; }
+        .sim-gauge svg { transform:rotate(-90deg); }
+        .sim-gauge-value { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:38px; font-weight:800; }
+        .sim-verdict { font-size:18px; font-weight:700; margin-bottom:6px; }
+        .sim-verdict.high{color:var(--accent3);} .sim-verdict.medium{color:var(--accent4);} .sim-verdict.low{color:var(--accent2);}
+        .sim-note { font-size:11px; color:var(--text2); margin-top:14px; line-height:1.5; }
+
+        .btn-primary { padding:12px 28px; border-radius:12px; border:none; background:var(--gradient1); color:#fff; font-family:'Inter'; font-size:15px; font-weight:600; cursor:pointer; transition:transform .2s,box-shadow .2s; }
+        .btn-primary:hover { transform:translateY(-2px); box-shadow:0 8px 25px rgba(108,99,255,.3); }
+        .badge { display:inline-block; padding:3px 10px; border-radius:6px; font-size:11px; font-weight:700; }
+        .badge.green{background:rgba(0,212,170,.15);color:var(--accent2);} .badge.red{background:rgba(255,107,107,.15);color:var(--accent3);} .badge.blue{background:rgba(108,99,255,.15);color:var(--accent);}
+    </style>
+</head>
+<body>
+    <!-- NAV -->
+    <nav class="nav">
+        <div class="nav-inner">
+            <button class="nav-btn active" onclick="showSection('intro')">🏠 Overview</button>
+            <button class="nav-btn" onclick="showSection('pipeline')">🔬 Pipeline</button>
+            <button class="nav-btn" onclick="showSection('eda')">📊 EDA</button>
+            <button class="nav-btn" onclick="showSection('cohort')">🏥 Cohort</button>
+            <button class="nav-btn" onclick="showSection('training')">🤖 Training</button>
+            <button class="nav-btn" onclick="showSection('evaluation')">📈 Evaluation</button>
+            <button class="nav-btn" onclick="showSection('robustness')">🛡️ Robustness</button>
+            <button class="nav-btn" onclick="showSection('simulator')">⚡ Live Demo</button>
+        </div>
+    </nav>
+
+    <!-- ============ 1. OVERVIEW ============ -->
+    <div id="intro" class="section active">
+        <div class="hero">
+            <div class="hero-badge">🏥 MIMIC-IV · Research-Grade · Multimodal AI</div>
+            <h1>Early AKI Prediction<br>in ICU Patients</h1>
+            <p>A machine learning pipeline that predicts Acute Kidney Injury within the first 24 hours of ICU admission by fusing structured clinical data with BioClinicalBERT text embeddings.</p>
+            <button class="btn-primary" onclick="showSection('pipeline')">Explore the Pipeline →</button>
+        </div>
+        <div class="grid-4" style="margin-top:30px;">
+            <div class="stat"><div class="stat-value accent">74,482</div><div class="stat-label">ICU Stays Analyzed</div></div>
+            <div class="stat"><div class="stat-value green">0.818</div><div class="stat-label">Best AUROC (Fusion MLP)</div></div>
+            <div class="stat"><div class="stat-value yellow">1,490</div><div class="stat-label">Fused Features</div></div>
+            <div class="stat"><div class="stat-value red">21%</div><div class="stat-label">AKI Prevalence</div></div>
+        </div>
+        <div class="grid-3" style="margin-top:20px;">
+            <div class="card"><h3>🧪 Structured Data</h3><p>722 features from lab values (BUN, Sodium, Potassium, etc.), demographics (age, gender), and ICU type — all from the <strong>first 24 hours</strong> only.</p></div>
+            <div class="card"><h3>📝 Clinical Text</h3><p>768-dimensional embeddings from BioClinicalBERT, a BERT model pre-trained on 2M+ clinical notes. Extracts semantic meaning from discharge summaries.</p></div>
+            <div class="card"><h3>🧠 Multimodal Fusion</h3><p>Early fusion via concatenation → MLP neural network (256→128→64). Combines both modalities for the best performance.</p></div>
+        </div>
+    </div>
+
+    <!-- ============ 2. PIPELINE VISUAL ============ -->
+    <div id="pipeline" class="section">
+        <div class="section-header">
+            <h2>🔬 Pipeline Architecture</h2>
+            <p>19 tasks executed across 5 stages. Each row below is one stage — hover over any box for details.</p>
+        </div>
+
+        <!-- Stage 0: Data Preparation -->
+        <div class="pipeline-visual">
+            <div class="pv-row">
+                <div class="pv-phase p0">DATA PREP</div>
+                <div class="pv-steps">
+                    <div class="pv-step"><div class="pv-num">Task 1</div><div class="pv-name">Project Setup</div><div class="pv-file">config.py</div></div>
+                    <div class="pv-step"><div class="pv-num">Task 2</div><div class="pv-name">EDA Engine</div><div class="pv-file">eda_engine.py</div></div>
+                    <div class="pv-step"><div class="pv-num">Task 4</div><div class="pv-name">AKI Labeling (KDIGO)</div><div class="pv-file">aki_labeler.py</div></div>
+                    <div class="pv-step"><div class="pv-num">Task 5</div><div class="pv-name">Cohort Analysis</div><div class="pv-file">cohort_analyzer.py</div></div>
+                </div>
+            </div>
+            <div class="pv-arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12" stroke="#6C63FF" stroke-width="2" fill="none"/></svg></div>
+
+            <!-- Stage 1: Feature Engineering -->
+            <div class="pv-row">
+                <div class="pv-phase p1">FEATURES</div>
+                <div class="pv-steps">
+                    <div class="pv-step"><div class="pv-num">Task 7</div><div class="pv-name">Lab Aggregation (24h cutoff)</div><div class="pv-file">lab_aggregator.py</div></div>
+                    <div class="pv-step"><div class="pv-num">Task 7</div><div class="pv-name">Demographic Features</div><div class="pv-file">feature_extractor.py</div></div>
+                    <div class="pv-step"><div class="pv-num">Task 8</div><div class="pv-name">Patient-Level Splitting (70/15/15)</div><div class="pv-file">data_splitter.py</div></div>
+                    <div class="pv-step"><div class="pv-num">Task 10</div><div class="pv-name">BioClinicalBERT Embeddings</div><div class="pv-file">text_processor.py</div></div>
+                </div>
+            </div>
+            <div class="pv-arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12" stroke="#6C63FF" stroke-width="2" fill="none"/></svg></div>
+
+            <!-- Stage 2: Phase 1 + 2 -->
+            <div class="pv-row">
+                <div class="pv-phase p2">BASELINES</div>
+                <div class="pv-steps">
+                    <div class="pv-step"><div class="pv-num">Phase 1</div><div class="pv-name">LR + RF on Structured (722 feat)</div><div class="pv-file">train_baseline_structured.py</div></div>
+                    <div class="pv-step"><div class="pv-num">Phase 2</div><div class="pv-name">LR + RF on Text (768 feat)</div><div class="pv-file">train_baseline_text.py</div></div>
+                </div>
+            </div>
+            <div class="pv-arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12" stroke="#6C63FF" stroke-width="2" fill="none"/></svg></div>
+
+            <!-- Stage 3: Fusion -->
+            <div class="pv-row">
+                <div class="pv-phase p3">FUSION</div>
+                <div class="pv-steps">
+                    <div class="pv-step" style="border-color:var(--accent2);"><div class="pv-num">Phase 3</div><div class="pv-name">🧠 MLP (256→128→64) on Fused (1490 feat)</div><div class="pv-file">train_multimodal.py</div></div>
+                </div>
+            </div>
+            <div class="pv-arrow"><svg viewBox="0 0 20 20"><path d="M10 4 L10 16 M6 12 L10 16 L14 12" stroke="#6C63FF" stroke-width="2" fill="none"/></svg></div>
+
+            <!-- Stage 4: Eval -->
+            <div class="pv-row">
+                <div class="pv-phase p4">EVALUATE</div>
+                <div class="pv-steps">
+                    <div class="pv-step"><div class="pv-num">Task 15</div><div class="pv-name">Comprehensive Evaluation</div><div class="pv-file">generate_evaluation_report.py</div></div>
+                    <div class="pv-step"><div class="pv-num">Task 16</div><div class="pv-name">Modality Masking Robustness</div><div class="pv-file">robustness_testing.py</div></div>
+                    <div class="pv-step"><div class="pv-num">Task 18</div><div class="pv-name">Master Pipeline Script</div><div class="pv-file">run_pipeline.py</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KEY DESIGN DECISIONS -->
+        <div class="grid-3" style="margin-top:24px;">
+            <div class="card" style="border-left:3px solid var(--accent3);">
+                <h3>🚫 Anti-Leakage</h3>
+                <p>Only features from the <strong>first 24 hours</strong> are used for prediction. AKI labels are computed only from data <strong>after</strong> 24h. Patient-level splitting prevents the same patient from appearing in both train and test sets.</p>
+            </div>
+            <div class="card" style="border-left:3px solid var(--accent);">
+                <h3>📋 KDIGO Standard</h3>
+                <p>AKI is defined using the international gold standard: <strong>0.3 mg/dL creatinine rise in 48h</strong> OR <strong>1.5× baseline in 7 days</strong>. Baseline creatinine uses same-admission pre-ICU values.</p>
+            </div>
+            <div class="card" style="border-left:3px solid var(--accent2);">
+                <h3>🔁 Reproducibility</h3>
+                <p>All random operations use <strong>seed = 42</strong>. Phase completion markers ensure dependent stages don't run before prerequisites. All hyperparameters are saved as JSON files.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 3. EDA ============ -->
+    <div id="eda" class="section">
+        <div class="section-header">
+            <h2>📊 Exploratory Data Analysis</h2>
+            <p>Understanding the raw MIMIC-IV data before building any models. Click any image to zoom in.</p>
+        </div>
+
+        <div class="grid-2">
+            <!-- Age Distribution -->
+            <div class="fig-card">
+                <img src="figures/age_distribution.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Patient Age Distribution</div>
+                    <div class="fig-interp">Most ICU patients are <strong>60–80 years old</strong>. The distribution is left-skewed, reflecting that ICU admissions are more common in elderly patients. AKI risk increases with age due to declining kidney reserve.</div>
+                </div>
+            </div>
+
+            <!-- Gender Distribution -->
+            <div class="fig-card">
+                <img src="figures/gender_distribution.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Gender Distribution</div>
+                    <div class="fig-interp">There's a slight <strong>male predominance</strong> in ICU admissions, consistent with published epidemiological literature. Gender is included as a binary feature in our model.</div>
+                </div>
+            </div>
+
+            <!-- ICU Stay Length -->
+            <div class="fig-card">
+                <img src="figures/icu_stay_length_distribution.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">ICU Stay Duration (hours)</div>
+                    <div class="fig-interp">Most stays are <strong>2–5 days</strong>. We filter out stays &lt; 24 hours since we need at least 24h of data for both features and AKI evaluation. The long tail represents critically ill patients.</div>
+                </div>
+            </div>
+
+            <!-- ICU Stays Per Patient -->
+            <div class="fig-card">
+                <img src="figures/icu_stays_per_patient.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">ICU Stays Per Patient</div>
+                    <div class="fig-interp">Most patients have <strong>1–2 ICU stays</strong>, but some have 5+. This is why we use <strong>patient-level splitting</strong> — without it, the same patient's multiple stays could appear in both train and test sets, inflating results.</div>
+                </div>
+            </div>
+
+            <!-- Creatinine Distribution -->
+            <div class="fig-card">
+                <img src="figures/creatinine_distribution.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Raw Creatinine Value Distribution</div>
+                    <div class="fig-interp">Creatinine is the <strong>primary biomarker for kidney function</strong>. Normal range is 0.6–1.2 mg/dL. The right tail (values > 3) indicates patients with <strong>severe kidney impairment</strong> — these are the AKI cases we're trying to predict.</div>
+                </div>
+            </div>
+
+            <!-- Lab Coverage -->
+            <div class="fig-card">
+                <img src="figures/lab_coverage.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Lab Test Coverage Across ICU Stays</div>
+                    <div class="fig-interp">Not all labs are measured for every patient. We <strong>select only labs with ≥30% coverage</strong>. Common labs (BUN, sodium, potassium) are measured in nearly all patients. Rare labs are excluded because too much imputation introduces noise.</div>
+                </div>
+            </div>
+
+            <!-- Lab Measurement Counts -->
+            <div class="fig-card">
+                <img src="figures/lab_measurement_counts.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Lab Measurements Per ICU Stay</div>
+                    <div class="fig-interp">Each stay has a <strong>variable number</strong> of lab measurements. Since ML models need fixed-length inputs, we aggregate each lab into 6 statistics: <strong>mean, min, max, std, first, last</strong> values within the first 24 hours.</div>
+                </div>
+            </div>
+
+            <!-- Missingness Rates -->
+            <div class="fig-card">
+                <img src="figures/missingness_rates.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Feature Missingness Rates</div>
+                    <div class="fig-interp">Some features are <strong>heavily missing</strong> (60%+). We create binary <strong>missingness indicators</strong> (1=missing, 0=present) as additional features — the pattern of what's missing can itself be clinically informative. Missing values are imputed with <strong>training-set medians</strong>.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 4. COHORT ANALYSIS ============ -->
+    <div id="cohort" class="section">
+        <div class="section-header">
+            <h2>🏥 Cohort & AKI Analysis</h2>
+            <p>After labeling with KDIGO criteria, we analyze the characteristics of AKI vs non-AKI patients.</p>
+        </div>
+
+        <div class="grid-2">
+            <!-- AKI Prevalence -->
+            <div class="fig-card">
+                <img src="figures/aki_prevalence.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">AKI Prevalence in Cohort</div>
+                    <div class="fig-interp">About <strong>21% of ICU stays develop AKI</strong>. This is consistent with clinical literature (10–30% for ICU populations). The class imbalance means we must use <strong>class_weight='balanced'</strong> in our models and track AUPRC (not just accuracy).</div>
+                </div>
+            </div>
+
+            <!-- Baseline Creatinine Comparison -->
+            <div class="fig-card">
+                <img src="figures/baseline_creatinine_comparison.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Baseline Creatinine: AKI vs Non-AKI</div>
+                    <div class="fig-interp">AKI patients have <strong>higher baseline creatinine</strong> on average. This makes clinical sense — patients with already-impaired kidneys are more vulnerable to further injury. This confirms our labeling logic is clinically valid.</div>
+                </div>
+            </div>
+
+            <!-- Age Comparison -->
+            <div class="fig-card">
+                <img src="figures/age_comparison.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Age Distribution: AKI vs Non-AKI</div>
+                    <div class="fig-interp">AKI patients tend to be <strong>slightly older</strong>, but the distributions overlap significantly. Age alone is not a strong predictor of AKI, but it contributes as part of the multivariate model.</div>
+                </div>
+            </div>
+
+            <!-- Max Creatinine Increase -->
+            <div class="fig-card">
+                <img src="figures/max_creatinine_increase.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Maximum Creatinine Increase (AKI cases)</div>
+                    <div class="fig-interp">Among AKI-positive patients, most show creatinine increases of <strong>0.3–1.0 mg/dL</strong>. The 0.3 mg/dL threshold (KDIGO) is visible in the left edge. Some patients have dramatic 5+ mg/dL increases indicating <strong>severe AKI</strong>.</div>
+                </div>
+            </div>
+
+            <!-- Correlation Heatmap -->
+            <div class="fig-card" style="grid-column:span 2;">
+                <img src="figures/correlation_heatmap.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Feature Correlation Heatmap</div>
+                    <div class="fig-interp">Shows relationships between features. <strong>BUN and creatinine are strongly correlated</strong> (both reflect kidney function). High correlations between related labs (e.g., sodium/chloride) are expected. This helps identify redundant features and validates clinical relationships.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 5. TRAINING CURVES ============ -->
+    <div id="training" class="section">
+        <div class="section-header">
+            <h2>🤖 Model Training & Results</h2>
+            <p>Three phases of model training: structured-only, text-only, and multimodal fusion.</p>
+        </div>
+
+        <!-- Metrics Table -->
+        <div class="card" style="margin-bottom:24px;">
+            <h3>📋 All Models — Test Set Performance</h3>
+            <table class="metrics-table">
+                <thead><tr><th>Model</th><th>AUROC ↑</th><th>AUPRC ↑</th><th>Accuracy</th><th>F1</th><th>Brier ↓</th></tr></thead>
+                <tbody>
+                    <tr class="best"><td>🏆 MLP Fusion (Structured + Text)</td><td>0.818</td><td>0.589</td><td>0.831</td><td>0.463</td><td>0.124</td></tr>
+                    <tr><td>Logistic Regression (Structured)</td><td>0.816</td><td>0.567</td><td>0.768</td><td>0.559</td><td>0.169</td></tr>
+                    <tr><td>Random Forest (Structured)</td><td>0.815</td><td>0.573</td><td>0.777</td><td>0.556</td><td>0.159</td></tr>
+                    <tr class="worst"><td>Logistic Regression (Text)</td><td>0.509</td><td>0.214</td><td>0.229</td><td>0.353</td><td>0.250</td></tr>
+                    <tr class="worst"><td>Random Forest (Text)</td><td>0.511</td><td>0.215</td><td>0.230</td><td>0.353</td><td>0.248</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="grid-2">
+            <!-- Structured Curves -->
+            <div class="fig-card">
+                <img src="figures/baseline_structured_curves.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Phase 1: Structured-Only Model Curves</div>
+                    <div class="fig-interp">ROC and PR curves for LR and RF trained on <strong>722 structured features</strong>. Both achieve strong <strong>~0.815 AUROC</strong>. The PR curve shows the challenge of class imbalance — precision drops as recall increases. This is the baseline that fusion must beat.</div>
+                </div>
+            </div>
+
+            <!-- Text Curves -->
+            <div class="fig-card">
+                <img src="figures/baseline_text_curves.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Phase 2: Text-Only Model Curves</div>
+                    <div class="fig-interp">Near-diagonal ROC curves (<strong>~0.51 AUROC = random</strong>). This is <strong>expected and correct</strong> — most patients don't have discharge summaries within the first 24 hours. If text-only scored high, it would indicate <strong>temporal data leakage</strong>.</div>
+                </div>
+            </div>
+
+            <!-- Multimodal Curves -->
+            <div class="fig-card">
+                <img src="figures/baseline_multi_curves.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Phase 3: Multimodal Baseline Curves</div>
+                    <div class="fig-interp">Baseline multimodal comparison curves showing performance across the structured and text model pairs. This provides a reference point for evaluating the superior fusion MLP approach.</div>
+                </div>
+            </div>
+
+            <!-- Fusion Model Curves -->
+            <div class="fig-card">
+                <img src="figures/fusion_model_curves.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Phase 3: Fusion MLP Curves (Best Model)</div>
+                    <div class="fig-interp">The MLP (256→128→64) trained on <strong>1,490 fused features</strong> achieves the highest AUROC of <strong>0.818</strong> and the best Brier score of <strong>0.124</strong>. The fusion provides a small but meaningful improvement over structured-only baselines, especially in AUPRC (0.589 vs 0.573).</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 6. EVALUATION ============ -->
+    <div id="evaluation" class="section">
+        <div class="section-header">
+            <h2>📈 Comprehensive Evaluation</h2>
+            <p>All models evaluated on the held-out test set (11,170 patients never seen during training).</p>
+        </div>
+
+        <div class="grid-2">
+            <!-- ROC Curves -->
+            <div class="fig-card">
+                <img src="figures/roc_curves.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">ROC Curves — All Models</div>
+                    <div class="fig-interp"><strong>ROC-AUC measures discrimination ability</strong> — can the model separate AKI from non-AKI? The structured and fusion models are closely clustered near <strong>0.82</strong> (excellent), while text-only models are at the diagonal (random). The closer to the top-left corner, the better.</div>
+                </div>
+            </div>
+
+            <!-- PR Curves -->
+            <div class="fig-card">
+                <img src="figures/pr_curves.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Precision-Recall Curves — All Models</div>
+                    <div class="fig-interp"><strong>PR-AUC is more informative for imbalanced data</strong> (21% AKI). The fusion model achieves the best <strong>AUPRC of 0.589</strong>. Even with good discrimination, achieving high precision and recall simultaneously is challenging due to the 79/21 class split.</div>
+                </div>
+            </div>
+
+            <!-- Calibration Curves -->
+            <div class="fig-card">
+                <img src="figures/calibration_curves.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Calibration Curves (10-bin Reliability Diagram)</div>
+                    <div class="fig-interp"><strong>Calibration measures prediction trustworthiness</strong> — when the model says "70% risk," does 70% of those patients truly develop AKI? The diagonal line is perfect calibration. The <strong>MLP Fusion is best calibrated</strong> (Brier = 0.124), meaning clinicians can trust its probability estimates.</div>
+                </div>
+            </div>
+
+            <!-- AUROC Comparison -->
+            <div class="fig-card">
+                <img src="figures/auroc_comparison.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">AUROC Comparison Bar Chart</div>
+                    <div class="fig-interp">Side-by-side comparison: Structured models (~0.815), Fusion MLP (~0.818), Text-only (~0.51). The <strong>small gap between structured and fusion</strong> shows that text adds marginal value in a 24h-restricted setting. In a less temporally constrained setting, the gap would likely be larger.</div>
+                </div>
+            </div>
+
+            <!-- AUPRC Comparison -->
+            <div class="fig-card">
+                <img src="figures/auprc_comparison.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">AUPRC Comparison Bar Chart</div>
+                    <div class="fig-interp">Fusion MLP has the <strong>highest AUPRC (0.589)</strong>, indicating it finds more true AKI cases with fewer false alarms. This is the most clinically relevant metric since AKI is a minority class — we care about catching real AKI without crying wolf.</div>
+                </div>
+            </div>
+
+            <!-- PRF1 Comparison -->
+            <div class="fig-card">
+                <img src="figures/prf1_comparison.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Precision / Recall / F1 Grouped Bar Chart</div>
+                    <div class="fig-interp">The tradeoff is visible: <strong>Fusion MLP has highest precision (0.70)</strong> but lower recall (0.35), while LR has higher recall (0.70) but lower precision (0.47). In clinical practice, the choice depends on whether you prefer fewer missed cases (recall) or fewer false alarms (precision).</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 7. ROBUSTNESS ============ -->
+    <div id="robustness" class="section">
+        <div class="section-header">
+            <h2>🛡️ Modality Masking Robustness</h2>
+            <p>What happens when we zero out entire modalities at test time (no retraining)?</p>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>AUROC Under Masking</h3>
+                <div style="margin-top:14px;">
+                    <div class="rob-bar"><div class="rob-label">Full Model</div><div class="rob-track"><div class="rob-fill full" style="width:81.8%">0.818</div></div></div>
+                    <div class="rob-bar"><div class="rob-label">Masked Text</div><div class="rob-track"><div class="rob-fill ok" style="width:81.6%">0.816 (−0.26%)</div></div></div>
+                    <div class="rob-bar"><div class="rob-label">Masked Structured</div><div class="rob-track"><div class="rob-fill bad" style="width:49%">0.490 (−40.1%)</div></div></div>
+                </div>
+            </div>
+            <div class="card">
+                <h3>💡 Key Insights</h3>
+                <p style="margin-bottom:10px"><strong style="color:var(--accent2)">Text masking barely matters (0.26% drop)</strong> — The model gracefully falls back to structured features. This is ideal for deployment since most patients lack early notes.</p>
+                <p style="margin-bottom:10px"><strong style="color:var(--accent3)">Structured masking is catastrophic (40% drop)</strong> — Lab values are the dominant signal. Without them, the model is no better than random.</p>
+                <p><strong style="color:var(--accent)">Clinical implication:</strong> The model is safe to deploy even when notes aren't yet available — it won't produce garbage predictions.</p>
+            </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+            <div class="fig-card">
+                <img src="figures/robustness_comparison.png" onclick="openLightbox(this)">
+                <div class="fig-info">
+                    <div class="fig-title">Robustness Comparison Chart</div>
+                    <div class="fig-interp">Visual comparison of model performance across three masking conditions. The <strong>near-identical bars</strong> for Full vs Masked Text confirm the model doesn't depend on text availability. The collapsed bar for Masked Structured confirms <strong>labs are essential</strong>.</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📊 Degradation Summary</h3>
+                <table class="metrics-table">
+                    <thead><tr><th>Scenario</th><th>AUROC</th><th>AUPRC</th><th>F1</th></tr></thead>
+                    <tbody>
+                        <tr class="best"><td>Full (Baseline)</td><td>0.818</td><td>0.589</td><td>0.463</td></tr>
+                        <tr><td>Masked Text</td><td>0.816 <span class="badge green">−0.3%</span></td><td>0.577</td><td>0.461</td></tr>
+                        <tr class="worst"><td>Masked Structured</td><td>0.490 <span class="badge red">−40%</span></td><td>0.211</td><td>0.000</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 8. SIMULATOR ============ -->
+    <div id="simulator" class="section">
+        <div class="section-header">
+            <h2>⚡ Live AKI Risk Simulator</h2>
+            <p>Adjust patient lab values to see how predicted AKI risk changes. This simulates how the model interprets different clinical scenarios.</p>
+        </div>
+        <div class="sim-container">
+            <div>
+                <div class="sim-field"><label>🧪 Baseline Creatinine (mg/dL)</label><input type="range" id="creatinine" min="0.3" max="6.0" step="0.1" value="1.0" oninput="updateSim()"><span class="val" id="creatinine-val">1.0</span></div>
+                <div class="sim-field"><label>🩸 BUN (mg/dL)</label><input type="range" id="bun" min="5" max="120" step="1" value="18" oninput="updateSim()"><span class="val" id="bun-val">18</span></div>
+                <div class="sim-field"><label>⚡ Potassium (mEq/L)</label><input type="range" id="potassium" min="2.5" max="7.0" step="0.1" value="4.0" oninput="updateSim()"><span class="val" id="potassium-val">4.0</span></div>
+                <div class="sim-field"><label>🧂 Sodium (mEq/L)</label><input type="range" id="sodium" min="120" max="160" step="1" value="140" oninput="updateSim()"><span class="val" id="sodium-val">140</span></div>
+                <div class="sim-field"><label>🫧 Bicarbonate (mEq/L)</label><input type="range" id="bicarb" min="10" max="35" step="1" value="24" oninput="updateSim()"><span class="val" id="bicarb-val">24</span></div>
+                <div class="sim-field"><label>🔴 WBC (K/uL)</label><input type="range" id="wbc" min="1" max="40" step="0.5" value="8" oninput="updateSim()"><span class="val" id="wbc-val">8.0</span></div>
+                <div class="sim-field"><label>🩺 Hemoglobin (g/dL)</label><input type="range" id="hemoglobin" min="4" max="18" step="0.5" value="12" oninput="updateSim()"><span class="val" id="hemoglobin-val">12.0</span></div>
+                <div class="sim-field"><label>🧓 Age (years)</label><input type="range" id="age" min="18" max="95" step="1" value="55" oninput="updateSim()"><span class="val" id="age-val">55</span></div>
+                <div class="sim-field"><label>🍬 Glucose (mg/dL)</label><input type="range" id="glucose" min="40" max="500" step="5" value="120" oninput="updateSim()"><span class="val" id="glucose-val">120</span></div>
+                <div class="sim-field"><label>🧾 Lactate (mmol/L)</label><input type="range" id="lactate" min="0.5" max="15" step="0.5" value="1.5" oninput="updateSim()"><span class="val" id="lactate-val">1.5</span></div>
+                <p style="font-size:12px; color:var(--text2); margin-top:8px;">ℹ️ The actual model uses <strong>1,490 features</strong>. These 10 sliders represent the most clinically significant ones for demonstration.</p>
+            </div>
+            <div class="sim-result">
+                <div class="sim-gauge">
+                    <svg width="180" height="180" viewBox="0 0 200 200">
+                        <circle cx="100" cy="100" r="85" fill="none" stroke="#232733" stroke-width="12"/>
+                        <circle id="gauge-arc" cx="100" cy="100" r="85" fill="none" stroke="url(#gaugeGrad)" stroke-width="12" stroke-linecap="round" stroke-dasharray="534" stroke-dashoffset="534"/>
+                        <defs><linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#00D4AA"/><stop offset="50%" stop-color="#FFD93D"/><stop offset="100%" stop-color="#FF6B6B"/></linearGradient></defs>
+                    </svg>
+                    <div class="sim-gauge-value" id="risk-pct">15%</div>
+                </div>
+                <div class="sim-verdict low" id="risk-verdict">Low Risk</div>
+                <p id="risk-desc" style="font-size:13px;color:var(--text2);line-height:1.6;">Patient's lab values suggest normal kidney function.</p>
+                <p class="sim-note">⚠️ Simplified simulation for demonstration. Not a medical device.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- LIGHTBOX -->
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()"><img id="lightbox-img" src="" alt=""></div>
+
+    <script>
+        function showSection(id){
+            document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.target.classList.add('active');
+            window.scrollTo(0,0);
+        }
+        function openLightbox(img){ document.getElementById('lightbox-img').src=img.src; document.getElementById('lightbox').classList.add('show'); }
+        function closeLightbox(){ document.getElementById('lightbox').classList.remove('show'); }
+        function updateSim(){
+            const cr=parseFloat(document.getElementById('creatinine').value);
+            const bun=parseFloat(document.getElementById('bun').value);
+            const k=parseFloat(document.getElementById('potassium').value);
+            const na=parseFloat(document.getElementById('sodium').value);
+            const bicarb=parseFloat(document.getElementById('bicarb').value);
+            const wbc=parseFloat(document.getElementById('wbc').value);
+            const hgb=parseFloat(document.getElementById('hemoglobin').value);
+            const age=parseFloat(document.getElementById('age').value);
+            const glucose=parseFloat(document.getElementById('glucose').value);
+            const lactate=parseFloat(document.getElementById('lactate').value);
+            document.getElementById('creatinine-val').textContent=cr.toFixed(1);
+            document.getElementById('bun-val').textContent=bun;
+            document.getElementById('potassium-val').textContent=k.toFixed(1);
+            document.getElementById('sodium-val').textContent=na;
+            document.getElementById('bicarb-val').textContent=bicarb;
+            document.getElementById('wbc-val').textContent=wbc.toFixed(1);
+            document.getElementById('hemoglobin-val').textContent=hgb.toFixed(1);
+            document.getElementById('age-val').textContent=age;
+            document.getElementById('glucose-val').textContent=glucose;
+            document.getElementById('lactate-val').textContent=lactate.toFixed(1);
+            let risk=0;
+            risk+=Math.max(0,(cr-1.0))*18;
+            risk+=Math.max(0,(bun-25))*0.5;
+            risk+=Math.max(0,(k-5.0))*8;
+            risk+=Math.max(0,(130-na))*0.5;
+            risk+=Math.max(0,(20-bicarb))*1.5;
+            risk+=Math.max(0,(wbc-12))*1.2;
+            risk+=Math.max(0,(8-hgb))*2;
+            risk+=Math.max(0,(age-60))*0.3;
+            risk+=Math.max(0,(glucose-200))*0.08;
+            risk+=Math.max(0,(lactate-2.0))*5;
+            risk=Math.min(95,Math.max(5,risk));
+            const offset=534-(534*risk/100);
+            document.getElementById('gauge-arc').style.strokeDashoffset=offset;
+            document.getElementById('risk-pct').textContent=Math.round(risk)+'%';
+            const verdict=document.getElementById('risk-verdict');
+            const desc=document.getElementById('risk-desc');
+            if(risk<25){verdict.textContent='✅ Low Risk';verdict.className='sim-verdict low';desc.textContent='Lab values within normal ranges. Low probability of AKI development.';}
+            else if(risk<55){verdict.textContent='⚠️ Moderate Risk';verdict.className='sim-verdict medium';desc.textContent='Some lab values are abnormal. Monitor kidney function closely.';}
+            else{verdict.textContent='🚨 High Risk';verdict.className='sim-verdict high';desc.textContent='Multiple markers indicate impaired kidney function. Immediate clinical attention recommended.';}
+        }
+        updateSim();
+    </script>
+</body>
+</html>

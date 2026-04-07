@@ -18,7 +18,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.metrics import (roc_auc_score, average_precision_score, brier_score_loss,
                              accuracy_score, precision_score, recall_score, f1_score,
-                             roc_curve, precision_recall_curve)
+                             roc_curve, precision_recall_curve, confusion_matrix, ConfusionMatrixDisplay)
 from sklearn.calibration import calibration_curve
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -219,6 +219,23 @@ def main():
     fig.tight_layout()
     fig.savefig(os.path.join(figures_dir, 'prf1_comparison.png'), dpi=config.FIGURE_DPI)
     plt.close()
+
+    # --- 15.6: Confusion Matrices ---
+    logger.info("Generating confusion matrices...")
+    for name, data in models_to_eval.items():
+        prob = data['prob']
+        pred = (prob >= 0.5).astype(int)
+        cm = confusion_matrix(y_test, pred)
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['No AKI', 'AKI'])
+        
+        fig, ax = plt.subplots(figsize=(6, 6))
+        disp.plot(ax=ax, cmap='Blues', values_format='d')
+        ax.set_title(f'Confusion Matrix: {name}')
+        
+        safe_name = name.replace(" ", "_").replace("(", "").replace(")", "")
+        fig.tight_layout()
+        fig.savefig(os.path.join(figures_dir, f'confusion_matrix_{safe_name}.png'), dpi=config.FIGURE_DPI)
+        plt.close(fig)
 
     logger.info("All evaluation visualizations saved to figures/")
     logger.info("=" * 80)

@@ -34,9 +34,6 @@ models/
 # Logs
 logs/
 
-# Results and figures (regenerable)
-results/
-figures/
 
 # OS
 .DS_Store

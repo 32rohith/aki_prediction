@@ -1,0 +1,7 @@
+Phase/Modality,Algorithm,ROC-AUC,PR-AUC,Brier Score
+Phase 1: Structured,Logistic Regression,0.8157,0.5666,0.1688
+Phase 1: Structured,Random Forest,0.8150,0.5734,0.1585
+Phase 2: Text-Only,Logistic Regression,0.5091,0.2142,0.2497
+Phase 2: Text-Only,Random Forest,0.5106,0.2145,0.2485
+Phase 3: Multimodal,Logistic Regression,0.8186,0.5744,0.1668
+Phase 3: Multimodal,Random Forest,0.8131,0.5754,0.1614

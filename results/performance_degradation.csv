@@ -1,0 +1,3 @@
+Scenario,AUROC_pct_drop,AUPRC_pct_drop,Accuracy_pct_drop,F1_pct_drop
+Masked Text,0.26,2.01,0.25,0.25
+Masked Structured,40.12,64.23,5.0,100.0
